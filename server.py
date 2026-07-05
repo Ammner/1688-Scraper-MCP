@@ -277,10 +277,6 @@ def analyze_supplier_reliability(url: str) -> str:
     except Exception as e:
         return f"背调失败: {str(e)}"
 
-if __name__ == "__main__":
-    mcp.run()
-
-
 @mcp.tool()
 def platform_info() -> str:
     """返回当前运行环境信息（平台/headless/Chrome路径），用于调试跨平台兼容性。"""
@@ -288,26 +284,18 @@ def platform_info() -> str:
     is_win = sys.platform == 'win32'
     has_display = bool(os.environ.get('DISPLAY'))
     headless_env = os.environ.get('HEADLESS', '')
-    
-    chrome_paths = []
-    if is_mac:
-        for p in [
-            '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-            '/Applications/Chromium.app/Contents/MacOS/Chromium',
-            '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
-        ]:
-            chrome_paths.append(f"{'OK' if os.path.exists(p) else 'XX'} {p}")
-    
     drission_dir = os.path.join(os.path.dirname(__file__), 'drission_user_data')
     cookies_exist = os.path.exists(os.path.join(drission_dir, 'Default', 'Cookies'))
-    
     return json.dumps({
         'platform': sys.platform,
         'python': sys.version.split()[0],
         'headless_env': headless_env or '(auto)',
         'has_desktop': is_mac or is_win or has_display,
         'display': os.environ.get('DISPLAY', '(none)'),
-        'chrome_paths': chrome_paths if is_mac else 'auto-detect',
         'user_data_dir': drission_dir,
         'cookies_db': 'present' if cookies_exist else 'missing',
     }, ensure_ascii=False, indent=2)
+
+
+if __name__ == "__main__":
+    mcp.run()
