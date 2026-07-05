@@ -24,14 +24,49 @@ def get_browser() -> ChromiumPage:
             _browser_instance = None
 
     co = ChromiumOptions()
-    # 保持登录状态的数据目录
+    # 保持登录状态的数据目录（Mac/Win/Linux 通用相对路径）
     user_data_path = os.path.join(os.path.dirname(__file__), 'drission_user_data')
     co.set_user_data_path(user_data_path)
-    co.headless(False)
+    
+    # 跨平台 headless 检测
+    #   Mac (darwin) / Windows (win32): 有真实桌面 → 默认 headed，可手动过验证码
+    #   Linux 有 DISPLAY (如 Xvfb): headed
+    #   Linux 无 DISPLAY (服务器): headless
+    is_mac = sys.platform == 'darwin'
+    is_win = sys.platform == 'win32'
+    has_desktop = is_mac or is_win or bool(os.environ.get('DISPLAY'))
+    
+    headless_env = os.environ.get('HEADLESS', '').lower()
+    if headless_env in ('1', 'true'):
+        headless = '1'
+    elif headless_env in ('0', 'false'):
+        headless = '0'
+    else:
+        headless = '0' if has_desktop else '1'
+    
+    co.headless(headless == '1')
+    
+    # Mac 自动检测 Chrome 路径
+    if is_mac:
+        for chrome_path in [
+            '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+            '/Applications/Chromium.app/Contents/MacOS/Chromium',
+            '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+        ]:
+            if os.path.exists(chrome_path):
+                co.set_browser_path(chrome_path)
+                break
+    
     co.set_argument('--disable-blink-features=AutomationControlled')
     co.set_argument('--disable-infobars')
+    co.set_argument('--no-sandbox')
+    co.set_argument('--disable-gpu')
+    co.set_argument('--disable-dev-shm-usage')
+    # 统一窗口大小，避免 headless 下元素不可见
+    co.set_argument('--window-size=1920,1080')
     # 性能优化：禁用图片加载
     co.set_pref('profile.managed_default_content_settings.images', 2)
+    
     _browser_instance = ChromiumPage(co)
     return _browser_instance
 
@@ -244,3 +279,35 @@ def analyze_supplier_reliability(url: str) -> str:
 
 if __name__ == "__main__":
     mcp.run()
+
+
+@mcp.tool()
+def platform_info() -> str:
+    """返回当前运行环境信息（平台/headless/Chrome路径），用于调试跨平台兼容性。"""
+    is_mac = sys.platform == 'darwin'
+    is_win = sys.platform == 'win32'
+    has_display = bool(os.environ.get('DISPLAY'))
+    headless_env = os.environ.get('HEADLESS', '')
+    
+    chrome_paths = []
+    if is_mac:
+        for p in [
+            '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+            '/Applications/Chromium.app/Contents/MacOS/Chromium',
+            '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+        ]:
+            chrome_paths.append(f"{'OK' if os.path.exists(p) else 'XX'} {p}")
+    
+    drission_dir = os.path.join(os.path.dirname(__file__), 'drission_user_data')
+    cookies_exist = os.path.exists(os.path.join(drission_dir, 'Default', 'Cookies'))
+    
+    return json.dumps({
+        'platform': sys.platform,
+        'python': sys.version.split()[0],
+        'headless_env': headless_env or '(auto)',
+        'has_desktop': is_mac or is_win or has_display,
+        'display': os.environ.get('DISPLAY', '(none)'),
+        'chrome_paths': chrome_paths if is_mac else 'auto-detect',
+        'user_data_dir': drission_dir,
+        'cookies_db': 'present' if cookies_exist else 'missing',
+    }, ensure_ascii=False, indent=2)
